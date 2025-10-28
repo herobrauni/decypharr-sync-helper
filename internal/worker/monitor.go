@@ -107,12 +107,16 @@ func (m *Monitor) monitorLoop() {
 func (m *Monitor) processCompletedTorrents() error {
 	m.logger.Printf("Refreshing torrent list for category '%s'", m.config.Monitor.Category)
 	
-	// Get completed torrents for the configured category
-	torrents, err := m.client.ListCompletedByCategory(m.ctx, m.config.Monitor.Category)
+	// Get all torrents and filter in Go code
+	allTorrents, err := m.client.ListAllTorrents(m.ctx)
 	if err != nil {
-		return fmt.Errorf("failed to list completed torrents: %w", err)
+		return fmt.Errorf("failed to list all torrents: %w", err)
 	}
 
+	m.logger.Printf("Found %d total torrents", len(allTorrents))
+
+	// Filter for completed torrents in the configured category
+	torrents := qbit.FilterCompletedTorrents(allTorrents, m.config.Monitor.Category)
 	m.logger.Printf("Found %d completed torrents in category '%s'", len(torrents), m.config.Monitor.Category)
 	
 	if len(torrents) == 0 {
@@ -122,8 +126,8 @@ func (m *Monitor) processCompletedTorrents() error {
 
 	// Log all found torrents
 	for _, torrent := range torrents {
-		m.logger.Printf("  - %s (hash: %s, progress: %.1f%%, state: %s)",
-			torrent.Name, torrent.Hash[:8], torrent.Progress*100, torrent.State)
+		m.logger.Printf("  - %s (hash: %s, progress: %.1f%%, state: %s, category: %s)",
+			torrent.Name, torrent.Hash[:8], torrent.Progress*100, torrent.State, torrent.Category)
 	}
 
 	// Process each torrent
@@ -166,13 +170,19 @@ func (m *Monitor) ProcessTorrent(torrent *qbit.Torrent) error {
 	for _, file := range torrentFiles {
 		op, err := files.LinkOrCopy(&m.config.Monitor, torrent, &file)
 		if err != nil {
-			m.logger.Printf("Error preparing file operation for '%s': %v", file.Name, err)
+			if !m.config.Monitor.DryRun {
+				m.logger.Printf("Error preparing file operation for '%s': %v", file.Name, err)
+			}
 			allSuccess = false
 			continue
 		}
 
 		if m.config.Monitor.DryRun {
-			m.logger.Printf("[DRY RUN] Would %s %s to %s", m.config.Monitor.Operation, op.Source, op.Destination)
+			if op.Success {
+				m.logger.Printf("[DRY RUN] Would %s %s to %s", m.config.Monitor.Operation, op.Source, op.Destination)
+			} else {
+				m.logger.Printf("[DRY RUN] Would fail to %s file '%s': %v", m.config.Monitor.Operation, file.Name, op.Error)
+			}
 			processedCount++
 			continue
 		}

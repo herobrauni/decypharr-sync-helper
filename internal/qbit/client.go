@@ -21,6 +21,7 @@ type Torrent struct {
 	Name         string  `json:"name"`
 	State        string  `json:"state"`
 	Progress     float64 `json:"progress"`
+	Category     string  `json:"category"`
 	SavePath     string  `json:"save_path"`
 	ContentPath  string  `json:"content_path"`
 	Size         int64   `json:"size"`
@@ -121,11 +122,10 @@ func (c *Client) Login(ctx context.Context) error {
 	return nil
 }
 
-// ListCompletedByCategory retrieves completed torrents for a specific category
-func (c *Client) ListCompletedByCategory(ctx context.Context, category string) ([]Torrent, error) {
+// ListAllTorrents retrieves all torrents from qBittorrent
+func (c *Client) ListAllTorrents(ctx context.Context) ([]Torrent, error) {
 	listURL := c.baseURL.ResolveReference(&url.URL{
 		Path: "/api/v2/torrents/info",
-		RawQuery: fmt.Sprintf("filter=completed&category=%s", url.QueryEscape(category)),
 	})
 
 	req, err := http.NewRequestWithContext(ctx, "GET", listURL.String(), nil)
@@ -152,15 +152,32 @@ func (c *Client) ListCompletedByCategory(ctx context.Context, category string) (
 		return nil, fmt.Errorf("failed to decode torrent list: %w", err)
 	}
 
-	// Filter for truly completed torrents (progress == 1.0 and not in transitional states)
+	return torrents, nil
+}
+
+// FilterCompletedTorrents filters torrents for completed ones in a specific category
+func FilterCompletedTorrents(torrents []Torrent, category string) []Torrent {
 	var completed []Torrent
 	for _, t := range torrents {
+		// Filter by category
+		if category != "" && t.Category != category {
+			continue
+		}
+		// Filter for truly completed torrents (progress == 1.0 and not in transitional states)
 		if t.Progress == 1.0 && !isTransitionalState(t.State) {
 			completed = append(completed, t)
 		}
 	}
+	return completed
+}
 
-	return completed, nil
+// ListCompletedByCategory retrieves completed torrents for a specific category (legacy method)
+func (c *Client) ListCompletedByCategory(ctx context.Context, category string) ([]Torrent, error) {
+	torrents, err := c.ListAllTorrents(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return FilterCompletedTorrents(torrents, category), nil
 }
 
 // FilesByHash retrieves file list for a specific torrent
