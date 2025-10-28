@@ -1,6 +1,6 @@
 # qb-sync
 
-A simple Go tool that monitors qBittorrent categories and processes completed torrents by hardlinking or copying files, then removing the torrent from qBittorrent.
+A simple Go tool that monitors qBittorrent categories and processes completed torrents by hardlinking or copying files, then removing torrent from qBittorrent.
 
 ## Features
 
@@ -13,6 +13,7 @@ A simple Go tool that monitors qBittorrent categories and processes completed to
 - Graceful shutdown with signal handling
 - YAML configuration with environment variable overrides
 - TLS support with insecure skip option
+- Fetches ALL torrents and filters in Go code for better control
 
 ## Configuration
 
@@ -74,6 +75,36 @@ go build -o qb-sync ./cmd/qb-sync
 ./qb-sync --version
 ```
 
+## Docker Deployment
+
+The tool includes Docker support for easy deployment:
+
+```bash
+# Build Docker image
+docker build -t ghcr.io/herobrauni/decypharr-sync-helper:latest .
+
+# Run with Docker
+docker run --rm \
+  -v /path/to/qb-sync.yaml:/config/qb-sync.yaml \
+  -v /data/completed:/data/completed \
+  ghcr.io/herobrauni/decypharr-sync-helper:latest
+```
+
+### Docker Compose
+
+```yaml
+version: '3.8'
+services:
+  qb-sync:
+    image: ghcr.io/herobrauni/decypharr-sync-helper:latest
+    volumes:
+      - ./qb-sync.yaml:/config/qb-sync.yaml
+      - /data/completed:/data/completed
+    environment:
+      - QB_SYNC_USERNAME=admin
+      - QB_SYNC_PASSWORD=adminadmin
+```
+
 ## Operation Modes
 
 - **hardlink**: Creates hard links (default). Faster and space-efficient.
@@ -86,15 +117,16 @@ When using hardlinks across different devices/filesystems, configure `cross_devi
 ## Behavior
 
 1. Logs into qBittorrent WebUI using cookie-based authentication
-2. Polls for completed torrents in the specified category
-3. For each completed torrent:
+2. Fetches ALL torrents from qBittorrent API
+3. Filters torrents in Go code for completed ones in specified category
+4. For each completed torrent:
    - Skips files ending with `.!qB` (incomplete files)
    - Skips files already present at destination with same size
    - Performs hardlink or copy operation based on configuration
    - Preserves permissions and modification times
    - After successful processing, removes torrent from qBittorrent
-4. Continues polling at configured interval
-5. Supports graceful shutdown via SIGINT/SIGTERM
+5. Continues polling at configured interval
+6. Supports graceful shutdown via SIGINT/SIGTERM
 
 ## Requirements
 
@@ -107,3 +139,16 @@ When using hardlinks across different devices/filesystems, configure `cross_devi
 ```bash
 go mod tidy
 go build -o qb-sync ./cmd/qb-sync
+```
+
+## GitHub Actions
+
+The project includes automated GitHub Actions for building and publishing multi-architecture Docker images:
+
+- **Build Trigger**: Push to main/master or tags
+- **Multi-arch Support**: Builds for linux/amd64 and linux/arm64
+- **Registry**: Publishes to GitHub Container Registry (ghcr.io)
+- **Image Tags**: Semantic versioning (vX.Y.Z)
+- **Caching**: Uses GitHub Actions cache for faster builds
+
+Images are available at: `ghcr.io/herobrauni/decypharr-sync-helper:latest`
