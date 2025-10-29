@@ -3,6 +3,7 @@ package plex
 import (
 	"context"
 	"encoding/xml"
+	"log"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -130,6 +131,7 @@ func (c *Client) RefreshLibrary(ctx context.Context, libraryKey string) error {
 	refreshURL := c.baseURL.ResolveReference(&url.URL{
 		Path: fmt.Sprintf("/library/sections/%s/refresh", libraryKey),
 	})
+	log.Printf("Refreshing Plex library (ID: %s) with URL: %s", libraryKey, refreshURL.String())
 
 	req, err := http.NewRequestWithContext(ctx, "GET", refreshURL.String(), nil)
 	if err != nil {
@@ -158,6 +160,7 @@ func (c *Client) RefreshLibraryPath(ctx context.Context, libraryKey, path string
 		Path:     fmt.Sprintf("/library/sections/%s/refresh", libraryKey),
 		RawQuery: fmt.Sprintf("path=%s", url.QueryEscape(path)),
 	})
+	log.Printf("Refreshing Plex library path (ID: %s, Path: %s) with URL: %s", libraryKey, path, refreshURL.String())
 
 	req, err := http.NewRequestWithContext(ctx, "GET", refreshURL.String(), nil)
 	if err != nil {
@@ -186,6 +189,7 @@ func (c *Client) RefreshPathForFile(ctx context.Context, filePath string) error 
 	if err != nil {
 		return fmt.Errorf("failed to find library for file: %w", err)
 	}
+	log.Printf("Found library '%s' (ID: %s) for file: %s", library.Title, library.Key, filePath)
 
 	// Extract the directory containing the file
 	dirPath := filepath.Dir(relativePath)

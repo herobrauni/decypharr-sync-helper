@@ -292,6 +292,7 @@ func (m *Monitor) refreshPlexLibraries(torrent *qbit.Torrent, torrentFiles []qbi
 		}
 
 		// Refresh the specific path in Plex
+		m.logger.Printf("Triggering Plex refresh for path: %s", destPath)
 		if err := m.plexClient.RefreshPathForFile(m.ctx, destPath); err != nil {
 			m.logger.Printf("Failed to refresh Plex path '%s': %v", dirPath, err)
 			continue
