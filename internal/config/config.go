@@ -3,80 +3,49 @@ package config
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
-
-	"gopkg.in/yaml.v3"
 )
 
 // Config represents the application configuration
 type Config struct {
-	QB      QBConfig      `yaml:"qb"`
-	Monitor MonitorConfig `yaml:"monitor"`
+	QB      QBConfig
+	Monitor MonitorConfig
+	Plex    PlexConfig
 }
 
 // QBConfig contains qBittorrent connection settings
 type QBConfig struct {
-	BaseURL               string `yaml:"base_url"`
-	Username              string `yaml:"username"`
-	Password              string `yaml:"password"`
-	TLSInsecureSkipVerify bool   `yaml:"tls_insecure_skip_verify"`
+	BaseURL               string
+	Username              string
+	Password              string
+	TLSInsecureSkipVerify bool
 }
 
 // MonitorConfig contains monitoring and operation settings
 type MonitorConfig struct {
-	Category            string        `yaml:"category"`
-	DestPath            string        `yaml:"dest_path"`
-	PollInterval        time.Duration `yaml:"poll_interval"`
-	Operation           string        `yaml:"operation"`           // hardlink|copy
-	CrossDeviceFallback string        `yaml:"cross_device_fallback"` // copy|error
-	DeleteTorrent       bool          `yaml:"delete_torrent"`
-	DeleteFiles         bool          `yaml:"delete_files"`
-	PreserveSubfolder   bool          `yaml:"preserve_subfolder"`
-	DryRun             bool          `yaml:"dry_run"`
-	LogLevel            string        `yaml:"log_level"`
+	Category            string
+	DestPath            string
+	PollInterval        time.Duration
+	Operation           string // hardlink|copy
+	CrossDeviceFallback string // copy|error
+	DeleteTorrent       bool
+	DeleteFiles         bool
+	PreserveSubfolder   bool
+	DryRun             bool
+	LogLevel            string
 }
 
-// LoadConfig loads configuration from file with environment variable overrides
-func LoadConfig(configPath string) (*Config, error) {
-	// Determine config file path if not specified
-	if configPath == "" {
-		// Check environment variable first
-		if envPath := os.Getenv("QB_SYNC_CONFIG"); envPath != "" {
-			configPath = envPath
-		} else {
-			// Try default locations in order
-			paths := []string{
-				"./qb-sync.yaml",
-				filepath.Join(os.Getenv("HOME"), ".config", "qb-sync", "config.yaml"),
-				"/etc/qb-sync/config.yaml",
-			}
-			for _, p := range paths {
-				if _, err := os.Stat(p); err == nil {
-					configPath = p
-					break
-				}
-			}
-			// If no config found, use current directory
-			if configPath == "" {
-				configPath = "./qb-sync.yaml"
-			}
-		}
-	}
+// PlexConfig contains Plex Media Server connection settings
+type PlexConfig struct {
+	URL     string
+	Token   string
+	Enabled bool
+}
 
+// LoadConfig loads configuration from environment variables only
+func LoadConfig() (*Config, error) {
 	// Initialize empty config
 	var cfg Config
-	
-	// Try to read config file
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		// Config file doesn't exist, continue with empty config (will be populated by env vars)
-	} else {
-		// Parse YAML if file was successfully read
-		if err := yaml.Unmarshal(data, &cfg); err != nil {
-			return nil, fmt.Errorf("failed to parse config file: %w", err)
-		}
-	}
 
 	// Apply environment variable overrides for QBConfig
 	if baseURL := os.Getenv("QB_SYNC_BASE_URL"); baseURL != "" {
@@ -126,6 +95,17 @@ func LoadConfig(configPath string) (*Config, error) {
 		cfg.Monitor.LogLevel = logLevel
 	}
 
+	// Apply environment variable overrides for PlexConfig
+	if plexURL := os.Getenv("QB_SYNC_PLEX_URL"); plexURL != "" {
+		cfg.Plex.URL = plexURL
+	}
+	if plexToken := os.Getenv("QB_SYNC_PLEX_TOKEN"); plexToken != "" {
+		cfg.Plex.Token = plexToken
+	}
+	if plexEnabled := os.Getenv("QB_SYNC_PLEX_ENABLED"); plexEnabled != "" {
+		cfg.Plex.Enabled = plexEnabled == "true" || plexEnabled == "1"
+	}
+
 	// Set defaults (only for non-required fields)
 	if cfg.Monitor.PollInterval == 0 {
 		cfg.Monitor.PollInterval = 30 * time.Second
@@ -148,6 +128,11 @@ func LoadConfig(configPath string) (*Config, error) {
 		cfg.QB.Password = cfg.Monitor.Category
 	}
 
+	// Set optional Plex defaults
+	if cfg.Plex.URL == "" {
+		cfg.Plex.URL = "http://localhost:32400"
+	}
+
 	// Validate configuration
 	if err := validateConfig(&cfg); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
@@ -160,15 +145,15 @@ func LoadConfig(configPath string) (*Config, error) {
 func validateConfig(cfg *Config) error {
 	// Check required qBittorrent settings
 	if cfg.QB.BaseURL == "" {
-		return fmt.Errorf("qb.base_url is required (set via config file or QB_SYNC_BASE_URL environment variable)")
+		return fmt.Errorf("qb.base_url is required (set via QB_SYNC_BASE_URL environment variable)")
 	}
-	
+
 	// Check required monitor settings
 	if cfg.Monitor.Category == "" {
-		return fmt.Errorf("monitor.category is required (set via config file or QB_SYNC_CATEGORY environment variable)")
+		return fmt.Errorf("monitor.category is required (set via QB_SYNC_CATEGORY environment variable)")
 	}
 	if cfg.Monitor.DestPath == "" {
-		return fmt.Errorf("monitor.dest_path is required (set via config file or QB_SYNC_DEST_PATH environment variable)")
+		return fmt.Errorf("monitor.dest_path is required (set via QB_SYNC_DEST_PATH environment variable)")
 	}
 	
 	// Validate poll interval
@@ -195,6 +180,16 @@ func validateConfig(cfg *Config) error {
 	}
 	if !validLogLevels[cfg.Monitor.LogLevel] {
 		return fmt.Errorf("monitor.log_level must be one of: debug, info, warn, error")
+	}
+	
+	// Validate Plex configuration if enabled
+	if cfg.Plex.Enabled {
+		if cfg.Plex.URL == "" {
+			return fmt.Errorf("plex.url is required when plex.enabled is true (set via QB_SYNC_PLEX_URL environment variable)")
+		}
+		if cfg.Plex.Token == "" {
+			return fmt.Errorf("plex.token is required when plex.enabled is true (set via QB_SYNC_PLEX_TOKEN environment variable)")
+		}
 	}
 	
 	return nil

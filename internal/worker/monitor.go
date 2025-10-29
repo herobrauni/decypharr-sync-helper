@@ -7,18 +7,21 @@ import (
 	"math/rand"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
 
 	"qb-sync/internal/config"
 	"qb-sync/internal/files"
+	"qb-sync/internal/plex"
 	"qb-sync/internal/qbit"
 )
 
 // Monitor handles the polling and processing of torrents
 type Monitor struct {
 	client    *qbit.Client
+	plexClient *plex.Client
 	config    *config.Config
 	logger    *log.Logger
 	ctx       context.Context
@@ -35,6 +38,15 @@ func NewMonitor(cfg *config.Config) (*Monitor, error) {
 		return nil, fmt.Errorf("failed to create qBittorrent client: %w", err)
 	}
 
+	// Create Plex client if enabled
+	var plexClient *plex.Client
+	if cfg.Plex.Enabled {
+		plexClient, err = plex.NewClient(&cfg.Plex)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create Plex client: %w", err)
+		}
+	}
+
 	// Create context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -42,12 +54,13 @@ func NewMonitor(cfg *config.Config) (*Monitor, error) {
 	logger := log.New(os.Stdout, "[qb-sync] ", log.LstdFlags)
 
 	return &Monitor{
-		client:  client,
-		config:  cfg,
-		logger:  logger,
-		ctx:     ctx,
-		cancel:  cancel,
-		backoff: time.Second, // Initial backoff
+		client:     client,
+		plexClient: plexClient,
+		config:     cfg,
+		logger:     logger,
+		ctx:        ctx,
+		cancel:     cancel,
+		backoff:    time.Second, // Initial backoff
 	}, nil
 }
 
@@ -198,8 +211,15 @@ func (m *Monitor) ProcessTorrent(torrent *qbit.Torrent) error {
 
 	m.logger.Printf("Processed %d/%d files for torrent '%s'", processedCount, len(torrentFiles), torrent.Name)
 
-	// If all operations were successful and not in dry run mode, delete the torrent
+	// If all operations were successful and not in dry run mode, trigger Plex refresh and delete the torrent
 	if !m.config.Monitor.DryRun && (allSuccess || len(torrentFiles) == 0) {
+		// Trigger Plex refresh if enabled and we have processed files
+		if m.config.Plex.Enabled && processedCount > 0 {
+			if err := m.refreshPlexLibraries(torrent, torrentFiles); err != nil {
+				m.logger.Printf("Failed to refresh Plex libraries for torrent '%s': %v", torrent.Name, err)
+			}
+		}
+
 		if m.config.Monitor.DeleteTorrent {
 			m.logger.Printf("Deleting torrent '%s' from qBittorrent (delete files: %t)", torrent.Name, m.config.Monitor.DeleteFiles)
 			if err := m.client.DeleteTorrent(m.ctx, torrent.Hash, m.config.Monitor.DeleteFiles); err != nil {
@@ -210,6 +230,9 @@ func (m *Monitor) ProcessTorrent(torrent *qbit.Torrent) error {
 			m.logger.Printf("Torrent deletion disabled, keeping '%s' in qBittorrent", torrent.Name)
 		}
 	} else if m.config.Monitor.DryRun {
+		if m.config.Plex.Enabled && processedCount > 0 {
+			m.logger.Printf("[DRY RUN] Would refresh Plex libraries for torrent '%s'", torrent.Name)
+		}
 		m.logger.Printf("[DRY RUN] Would delete torrent '%s' (delete files: %t)", torrent.Name, m.config.Monitor.DeleteFiles)
 	}
 
@@ -240,6 +263,47 @@ func min(a, b time.Duration) time.Duration {
 		return a
 	}
 	return b
+}
+
+// refreshPlexLibraries triggers Plex library refreshes for the processed files
+func (m *Monitor) refreshPlexLibraries(torrent *qbit.Torrent, torrentFiles []qbit.TorrentFile) error {
+	if m.plexClient == nil {
+		return fmt.Errorf("Plex client not initialized")
+	}
+
+	m.logger.Printf("Refreshing Plex libraries for torrent '%s'", torrent.Name)
+
+	// Keep track of unique paths we've already refreshed to avoid duplicate refreshes
+	refreshedPaths := make(map[string]bool)
+
+	for _, file := range torrentFiles {
+		// Build the destination path for this file
+		destPath, err := files.BuildDestPath(&m.config.Monitor, torrent, &file)
+		if err != nil {
+			m.logger.Printf("Failed to build destination path for file '%s': %v", file.Name, err)
+			continue
+		}
+
+		// Get the directory containing the file
+		dirPath := filepath.Dir(destPath)
+		
+		// Skip if we've already refreshed this directory
+		if refreshedPaths[dirPath] {
+			continue
+		}
+
+		// Refresh the specific path in Plex
+		if err := m.plexClient.RefreshPathForFile(m.ctx, destPath); err != nil {
+			m.logger.Printf("Failed to refresh Plex path '%s': %v", dirPath, err)
+			continue
+		}
+
+		m.logger.Printf("Successfully refreshed Plex path: %s", dirPath)
+		refreshedPaths[dirPath] = true
+	}
+
+	m.logger.Printf("Completed Plex library refresh for torrent '%s'", torrent.Name)
+	return nil
 }
 
 // addJitter adds random jitter to a duration (up to 10% of the duration)

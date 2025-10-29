@@ -1,5 +1,6 @@
 package main
 
+
 import (
 	"flag"
 	"fmt"
@@ -22,7 +23,6 @@ var (
 func main() {
 	// Define command line flags
 	var (
-		configPath  = flag.String("config", "", "Path to configuration file")
 		showVersion = flag.Bool("version", false, "Show version information and exit")
 		dryRun      = flag.Bool("dry-run", false, "Run in dry-run mode (no actual file operations or deletions)")
 	)
@@ -37,7 +37,7 @@ func main() {
 	}
 
 	// Load configuration
-	cfg, err := config.LoadConfig(*configPath)
+	cfg, err := config.LoadConfig()
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
@@ -59,6 +59,12 @@ func main() {
 	log.Printf("  Operation: %s", cfg.Monitor.Operation)
 	log.Printf("  Poll interval: %v", cfg.Monitor.PollInterval)
 	log.Printf("  Dry run: %t", cfg.Monitor.DryRun)
+	if cfg.Plex.Enabled {
+		log.Printf("  Plex URL: %s", cfg.Plex.URL)
+		log.Printf("  Plex enabled: true")
+	} else {
+		log.Printf("  Plex enabled: false")
+	}
 
 	// Create and run monitor
 	monitor, err := worker.NewMonitor(cfg)
