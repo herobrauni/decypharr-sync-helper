@@ -185,23 +185,15 @@ func (c *Client) RefreshLibraryPath(ctx context.Context, libraryKey, path string
 
 // RefreshPathForFile finds the appropriate library and refreshes the specific path containing the file
 func (c *Client) RefreshPathForFile(ctx context.Context, filePath string) error {
-	library, relativePath, err := c.FindLibraryByPath(ctx, filePath)
+	library, _, err := c.FindLibraryByPath(ctx, filePath)
 	if err != nil {
 		return fmt.Errorf("failed to find library for file: %w", err)
 	}
 	log.Printf("Found library '%s' (ID: %s) for file: %s", library.Title, library.Key, filePath)
 
 	// Extract the directory containing the file
-	dirPath := filepath.Dir(relativePath)
-	if dirPath == "." {
-		dirPath = ""
-	}
-
-	// If we have a specific directory, refresh that path
-	if dirPath != "" {
-		return c.RefreshLibraryPath(ctx, library.Key, dirPath)
-	}
-
-	// Otherwise, refresh the entire library
-	return c.RefreshLibrary(ctx, library.Key)
+	dirPath := filepath.Dir(filePath)
+	
+	// Refresh the specific directory path containing the file
+	return c.RefreshLibraryPath(ctx, library.Key, dirPath)
 }
