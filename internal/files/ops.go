@@ -29,7 +29,9 @@ func LinkOrCopy(cfg *config.MonitorConfig, torrent *qbit.Torrent, file *qbit.Tor
 	}
 
 	// Build source and destination paths
-	sourcePath := filepath.Join(torrent.SavePath, file.Name)
+	// Use content_path as the base directory for files, not save_path
+	// content_path already includes the full path to where the files are located
+	sourcePath := filepath.Join(torrent.ContentPath, file.Name)
 	destPath, err := BuildDestPath(cfg, torrent, file)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build destination path: %w", err)
@@ -73,11 +75,16 @@ func LinkOrCopy(cfg *config.MonitorConfig, torrent *qbit.Torrent, file *qbit.Tor
 
 // BuildDestPath constructs the destination path based on configuration
 func BuildDestPath(cfg *config.MonitorConfig, torrent *qbit.Torrent, file *qbit.TorrentFile) (string, error) {
-	if cfg.PreserveSubfolder {
-		// Preserve subfolder structure: dest_path/torrent_name/file_path
-		return filepath.Join(cfg.DestPath, torrent.Name, file.Name), nil
+	// Check if we should create torrent-specific folders
+	if cfg.CreateTorrentFolder || cfg.PreserveSubfolder {
+		if cfg.PreserveSubfolder {
+			// Preserve subfolder structure within torrent folder: dest_path/torrent_name/file_path
+			return filepath.Join(cfg.DestPath, torrent.Name, file.Name), nil
+		}
+		// Create torrent folder but flatten file structure: dest_path/torrent_name/basename
+		return filepath.Join(cfg.DestPath, torrent.Name, filepath.Base(file.Name)), nil
 	}
-	// Flatten structure: dest_path/file_path
+	// No torrent folder - flatten structure: dest_path/file_path
 	return filepath.Join(cfg.DestPath, file.Name), nil
 }
 
