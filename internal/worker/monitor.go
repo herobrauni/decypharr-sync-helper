@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math/rand"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -304,13 +303,4 @@ func (m *Monitor) refreshPlexLibraries(torrent *qbit.Torrent, torrentFiles []qbi
 
 	m.logger.Printf("Completed Plex library refresh for torrent '%s'", torrent.Name)
 	return nil
-}
-
-// addJitter adds random jitter to a duration (up to 10% of the duration)
-func addJitter(d time.Duration) time.Duration {
-	if d <= 0 {
-		return d
-	}
-	jitter := time.Duration(rand.Int63n(int64(d) / 10))
-	return d + jitter
 }
