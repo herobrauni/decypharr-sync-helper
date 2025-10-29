@@ -33,7 +33,6 @@ type MonitorConfig struct {
 	DeleteTorrent       bool          `yaml:"delete_torrent"`
 	DeleteFiles         bool          `yaml:"delete_files"`
 	PreserveSubfolder   bool          `yaml:"preserve_subfolder"`
-	CreateTorrentFolder bool          `yaml:"create_torrent_folder"` // always create torrent-specific folder
 	DryRun             bool          `yaml:"dry_run"`
 	LogLevel            string        `yaml:"log_level"`
 }
@@ -120,9 +119,6 @@ func LoadConfig(configPath string) (*Config, error) {
 	if preserveSubfolder := os.Getenv("QB_SYNC_PRESERVE_SUBFOLDER"); preserveSubfolder != "" {
 		cfg.Monitor.PreserveSubfolder = preserveSubfolder == "true" || preserveSubfolder == "1"
 	}
-	if createTorrentFolder := os.Getenv("QB_SYNC_CREATE_TORRENT_FOLDER"); createTorrentFolder != "" {
-		cfg.Monitor.CreateTorrentFolder = createTorrentFolder == "true" || createTorrentFolder == "1"
-	}
 	if dryRun := os.Getenv("QB_SYNC_DRY_RUN"); dryRun != "" {
 		cfg.Monitor.DryRun = dryRun == "true" || dryRun == "1"
 	}
@@ -142,10 +138,6 @@ func LoadConfig(configPath string) (*Config, error) {
 	}
 	if cfg.Monitor.LogLevel == "" {
 		cfg.Monitor.LogLevel = "info"
-	}
-	// Default to creating torrent folders for better organization
-	if !cfg.Monitor.PreserveSubfolder && !cfg.Monitor.CreateTorrentFolder {
-		cfg.Monitor.CreateTorrentFolder = true
 	}
 	
 	// Set optional QB defaults

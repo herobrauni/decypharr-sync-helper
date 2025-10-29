@@ -75,16 +75,11 @@ func LinkOrCopy(cfg *config.MonitorConfig, torrent *qbit.Torrent, file *qbit.Tor
 
 // BuildDestPath constructs the destination path based on configuration
 func BuildDestPath(cfg *config.MonitorConfig, torrent *qbit.Torrent, file *qbit.TorrentFile) (string, error) {
-	// Check if we should create torrent-specific folders
-	if cfg.CreateTorrentFolder || cfg.PreserveSubfolder {
-		if cfg.PreserveSubfolder {
-			// Preserve subfolder structure within torrent folder: dest_path/torrent_name/file_path
-			return filepath.Join(cfg.DestPath, torrent.Name, file.Name), nil
-		}
-		// Create torrent folder but flatten file structure: dest_path/torrent_name/basename
-		return filepath.Join(cfg.DestPath, torrent.Name, filepath.Base(file.Name)), nil
+	if cfg.PreserveSubfolder {
+		// Preserve subfolder structure: dest_path/torrent_name/file_path
+		return filepath.Join(cfg.DestPath, torrent.Name, file.Name), nil
 	}
-	// No torrent folder - flatten structure: dest_path/file_path
+	// Flatten structure: dest_path/file_path
 	return filepath.Join(cfg.DestPath, file.Name), nil
 }
 
