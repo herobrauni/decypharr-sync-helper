@@ -65,6 +65,16 @@ func main() {
 	} else {
 		log.Printf("  Plex enabled: false")
 	}
+	if cfg.Notification.Enabled {
+		log.Printf("  Notifications enabled: true")
+		log.Printf("  Notification URLs: %d configured", len(cfg.Notification.ShoutrrrURLs))
+		log.Printf("  Notify on success: %t", cfg.Notification.OnSuccess)
+		log.Printf("  Notify on error: %t", cfg.Notification.OnError)
+		log.Printf("  Notify on Plex error: %t", cfg.Notification.OnPlexError)
+		log.Printf("  Notify on torrent delete: %t", cfg.Notification.OnTorrentDelete)
+	} else {
+		log.Printf("  Notifications enabled: false")
+	}
 
 	// Create and run monitor
 	monitor, err := worker.NewMonitor(cfg)

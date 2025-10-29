@@ -13,20 +13,22 @@ import (
 
 	"qb-sync/internal/config"
 	"qb-sync/internal/files"
+	"qb-sync/internal/notification"
 	"qb-sync/internal/plex"
 	"qb-sync/internal/qbit"
 )
 
 // Monitor handles the polling and processing of torrents
 type Monitor struct {
-	client    *qbit.Client
-	plexClient *plex.Client
-	config    *config.Config
-	logger    *log.Logger
-	ctx       context.Context
-	cancel    context.CancelFunc
-	wg        sync.WaitGroup
-	backoff   time.Duration
+	client         *qbit.Client
+	plexClient     *plex.Client
+	notifyClient   *notification.Client
+	config         *config.Config
+	logger         *log.Logger
+	ctx            context.Context
+	cancel         context.CancelFunc
+	wg             sync.WaitGroup
+	backoff        time.Duration
 }
 
 // NewMonitor creates a new monitor instance
@@ -46,6 +48,12 @@ func NewMonitor(cfg *config.Config) (*Monitor, error) {
 		}
 	}
 
+	// Create notification client if enabled
+	notifyClient, err := notification.NewClient(&cfg.Notification)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create notification client: %w", err)
+	}
+
 	// Create context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -53,13 +61,14 @@ func NewMonitor(cfg *config.Config) (*Monitor, error) {
 	logger := log.New(os.Stdout, "[qb-sync] ", log.LstdFlags)
 
 	return &Monitor{
-		client:     client,
-		plexClient: plexClient,
-		config:     cfg,
-		logger:     logger,
-		ctx:        ctx,
-		cancel:     cancel,
-		backoff:    time.Second, // Initial backoff
+		client:       client,
+		plexClient:   plexClient,
+		notifyClient: notifyClient,
+		config:       cfg,
+		logger:       logger,
+		ctx:          ctx,
+		cancel:       cancel,
+		backoff:      time.Second, // Initial backoff
 	}, nil
 }
 
@@ -105,6 +114,12 @@ func (m *Monitor) monitorLoop() {
 			m.logger.Printf("Polling for completed torrents (interval: %v)", m.config.Monitor.PollInterval)
 			if err := m.processCompletedTorrents(); err != nil {
 				m.logger.Printf("Error processing torrents: %v", err)
+				// Send notification for general errors
+				if m.notifyClient != nil {
+					if notifErr := m.notifyClient.SendGeneralError(m.ctx, err); notifErr != nil {
+						m.logger.Printf("Failed to send error notification: %v", notifErr)
+					}
+				}
 				// Increase backoff on error
 				m.backoff = min(m.backoff*2, 2*time.Minute)
 			} else {
@@ -147,6 +162,12 @@ func (m *Monitor) processCompletedTorrents() error {
 		m.logger.Printf("Processing torrent: %s", torrent.Name)
 		if err := m.ProcessTorrent(&torrent); err != nil {
 			m.logger.Printf("Error processing torrent '%s': %v", torrent.Name, err)
+			// Send notification for torrent processing errors
+			if m.notifyClient != nil {
+				if notifErr := m.notifyClient.SendTorrentError(m.ctx, &torrent, err); notifErr != nil {
+					m.logger.Printf("Failed to send torrent error notification: %v", notifErr)
+				}
+			}
 		} else {
 			m.logger.Printf("Successfully processed torrent: %s", torrent.Name)
 		}
@@ -184,6 +205,12 @@ func (m *Monitor) ProcessTorrent(torrent *qbit.Torrent) error {
 		if err != nil {
 			if !m.config.Monitor.DryRun {
 				m.logger.Printf("Error preparing file operation for '%s': %v", file.Name, err)
+				// Send notification for file operation errors
+				if m.notifyClient != nil {
+					if notifErr := m.notifyClient.SendFileOperationError(m.ctx, torrent, file.Name, err); notifErr != nil {
+						m.logger.Printf("Failed to send file operation error notification: %v", notifErr)
+					}
+				}
 			}
 			allSuccess = false
 			continue
@@ -201,6 +228,12 @@ func (m *Monitor) ProcessTorrent(torrent *qbit.Torrent) error {
 
 		if !op.Success {
 			m.logger.Printf("Failed to %s file '%s': %v", m.config.Monitor.Operation, file.Name, op.Error)
+			// Send notification for file operation errors
+			if m.notifyClient != nil {
+				if notifErr := m.notifyClient.SendFileOperationError(m.ctx, torrent, file.Name, op.Error); notifErr != nil {
+					m.logger.Printf("Failed to send file operation error notification: %v", notifErr)
+				}
+			}
 			allSuccess = false
 		} else {
 			m.logger.Printf("Successfully %s %s to %s", m.config.Monitor.Operation, op.Source, op.Destination)
@@ -212,10 +245,23 @@ func (m *Monitor) ProcessTorrent(torrent *qbit.Torrent) error {
 
 	// If all operations were successful and not in dry run mode, trigger Plex refresh and delete the torrent
 	if !m.config.Monitor.DryRun && (allSuccess || len(torrentFiles) == 0) {
+		// Send success notification if configured
+		if m.notifyClient != nil && processedCount > 0 {
+			if notifErr := m.notifyClient.SendTorrentSuccess(m.ctx, torrent, processedCount, m.config.Monitor.Operation); notifErr != nil {
+				m.logger.Printf("Failed to send success notification: %v", notifErr)
+			}
+		}
+
 		// Trigger Plex refresh if enabled and we have processed files
 		if m.config.Plex.Enabled && processedCount > 0 {
 			if err := m.refreshPlexLibraries(torrent, torrentFiles); err != nil {
 				m.logger.Printf("Failed to refresh Plex libraries for torrent '%s': %v", torrent.Name, err)
+				// Send notification for Plex errors
+				if m.notifyClient != nil {
+					if notifErr := m.notifyClient.SendPlexError(m.ctx, torrent, err); notifErr != nil {
+						m.logger.Printf("Failed to send Plex error notification: %v", notifErr)
+					}
+				}
 			}
 		}
 
@@ -225,6 +271,12 @@ func (m *Monitor) ProcessTorrent(torrent *qbit.Torrent) error {
 				return fmt.Errorf("failed to delete torrent: %w", err)
 			}
 			m.logger.Printf("Successfully deleted torrent '%s' from qBittorrent", torrent.Name)
+			// Send torrent deletion notification if configured
+			if m.notifyClient != nil {
+				if notifErr := m.notifyClient.SendTorrentDeleted(m.ctx, torrent, m.config.Monitor.DeleteFiles); notifErr != nil {
+					m.logger.Printf("Failed to send torrent deletion notification: %v", notifErr)
+				}
+			}
 		} else {
 			m.logger.Printf("Torrent deletion disabled, keeping '%s' in qBittorrent", torrent.Name)
 		}
@@ -233,6 +285,12 @@ func (m *Monitor) ProcessTorrent(torrent *qbit.Torrent) error {
 			m.logger.Printf("[DRY RUN] Would refresh Plex libraries for torrent '%s'", torrent.Name)
 		}
 		m.logger.Printf("[DRY RUN] Would delete torrent '%s' (delete files: %t)", torrent.Name, m.config.Monitor.DeleteFiles)
+		// Send dry run success notification if configured
+		if m.notifyClient != nil && processedCount > 0 {
+			if notifErr := m.notifyClient.SendTorrentSuccess(m.ctx, torrent, processedCount, m.config.Monitor.Operation+" (dry run)"); notifErr != nil {
+				m.logger.Printf("Failed to send dry run success notification: %v", notifErr)
+			}
+		}
 	}
 
 	return nil
