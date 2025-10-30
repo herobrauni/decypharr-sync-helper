@@ -23,12 +23,21 @@ type Bot struct {
 
 // NewBot creates a new Telegram bot instance
 func NewBot(ctx context.Context, token string, qbClient *qbit.Client, cfg *config.TelegramConfig, category string) (*Bot, error) {
+	log.Printf("[TELEGRAM] Creating new bot instance...")
+	log.Printf("[TELEGRAM] Bot category: %s", category)
+	if len(cfg.AllowedUserIDs) > 0 {
+		log.Printf("[TELEGRAM] Restricted to %d allowed users", len(cfg.AllowedUserIDs))
+	} else {
+		log.Printf("[TELEGRAM] Access: All users allowed")
+	}
+
 	telegramBot := &Bot{
 		qbClient: qbClient,
 		config:   cfg,
 		category: category,
 	}
 
+	log.Printf("[TELEGRAM] Initializing Telegram bot with token...")
 	b, err := bot.New(token,
 		bot.WithMessageTextHandler("/start", bot.MatchTypeExact, telegramBot.handleStart),
 		bot.WithMessageTextHandler("/help", bot.MatchTypeExact, telegramBot.handleHelp),
@@ -37,9 +46,11 @@ func NewBot(ctx context.Context, token string, qbClient *qbit.Client, cfg *confi
 		bot.WithDefaultHandler(telegramBot.handleDefault),
 	)
 	if err != nil {
+		log.Printf("[TELEGRAM] ERROR: Failed to create bot: %v", err)
 		return nil, fmt.Errorf("failed to create telegram bot: %w", err)
 	}
 
+	log.Printf("[TELEGRAM] Bot created successfully")
 	telegramBot.bot = b
 
 	return telegramBot, nil
@@ -47,22 +58,30 @@ func NewBot(ctx context.Context, token string, qbClient *qbit.Client, cfg *confi
 
 // Start starts the Telegram bot
 func (b *Bot) Start(ctx context.Context) {
-	log.Printf("Starting Telegram bot...")
+	log.Printf("[TELEGRAM] Starting bot...")
+	log.Printf("[TELEGRAM] Bot is now running and waiting for messages...")
+
+	// This will block until the context is cancelled
 	b.bot.Start(ctx)
+
+	log.Printf("[TELEGRAM] Bot stopped")
 }
 
 // handleStart handles the /start command
 func (b *Bot) handleStart(ctx context.Context, api *bot.Bot, update *models.Update) {
+	log.Printf("[TELEGRAM] Received /start command from user %d (%s)", update.Message.From.ID, update.Message.From.FirstName)
 	b.sendStartMessage(ctx, update.Message.From.ID)
 }
 
 // handleHelp handles the /help command
 func (b *Bot) handleHelp(ctx context.Context, api *bot.Bot, update *models.Update) {
+	log.Printf("[TELEGRAM] Received /help command from user %d (%s)", update.Message.From.ID, update.Message.From.FirstName)
 	b.sendHelpMessage(ctx, update.Message.From.ID)
 }
 
 // handleStatus handles the /status command
 func (b *Bot) handleStatus(ctx context.Context, api *bot.Bot, update *models.Update) {
+	log.Printf("[TELEGRAM] Received /status command from user %d (%s)", update.Message.From.ID, update.Message.From.FirstName)
 	b.sendStatusMessage(ctx, update.Message.From.ID)
 }
 
@@ -164,8 +183,12 @@ func (b *Bot) handleTorrentMessage(ctx context.Context, api *bot.Bot, update *mo
 		return
 	}
 
+	log.Printf("[TELEGRAM] Received text message from user %d (%s): %.50s...",
+		update.Message.From.ID, update.Message.From.FirstName, update.Message.Text)
+
 	// Check if user is authorized
 	if !b.isAuthorized(update.Message.From.ID) {
+		log.Printf("[TELEGRAM] User %d is not authorized", update.Message.From.ID)
 		api.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: update.Message.Chat.ID,
 			Text:   "❌ You are not authorized to use this bot.",
@@ -177,19 +200,32 @@ func (b *Bot) handleTorrentMessage(ctx context.Context, api *bot.Bot, update *mo
 	magnetLinks := extractMagnetLinks(update.Message.Text)
 
 	if len(magnetLinks) == 0 {
+		log.Printf("[TELEGRAM] No magnet links found in message")
 		return // No magnet links found, let other handlers deal with it
 	}
 
+	log.Printf("[TELEGRAM] Found %d magnet link(s) in message", len(magnetLinks))
+
 	// Process each magnet link
-	for _, magnetLink := range magnetLinks {
+	for i, magnetLink := range magnetLinks {
+		log.Printf("[TELEGRAM] Processing magnet link %d/%d", i+1, len(magnetLinks))
 		b.processMagnetLink(ctx, update.Message.Chat.ID, magnetLink)
 	}
 }
 
 // handleTorrentFile processes uploaded torrent files
 func (b *Bot) handleTorrentFile(ctx context.Context, api *bot.Bot, update *models.Update) {
+	document := update.Message.Document
+	if document == nil {
+		return
+	}
+
+	log.Printf("[TELEGRAM] Received document '%s' from user %d (%s)",
+		document.FileName, update.Message.From.ID, update.Message.From.FirstName)
+
 	// Check if user is authorized
 	if !b.isAuthorized(update.Message.From.ID) {
+		log.Printf("[TELEGRAM] User %d is not authorized", update.Message.From.ID)
 		api.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: update.Message.Chat.ID,
 			Text:   "❌ You are not authorized to use this bot.",
@@ -197,19 +233,17 @@ func (b *Bot) handleTorrentFile(ctx context.Context, api *bot.Bot, update *model
 		return
 	}
 
-	document := update.Message.Document
-	if document == nil {
-		return
-	}
-
 	// Check if it's a torrent file
 	if !strings.HasSuffix(document.FileName, ".torrent") {
+		log.Printf("[TELEGRAM] Document '%s' is not a .torrent file", document.FileName)
 		api.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: update.Message.Chat.ID,
 			Text:   "❌ Please upload a valid .torrent file.",
 		})
 		return
 	}
+
+	log.Printf("[TELEGRAM] Processing .torrent file: %s", document.FileName)
 
 	// Get file info
 	fileInfo := bot.GetFileParams{
