@@ -74,18 +74,11 @@ The application uses **environment variables only** for configuration (no config
 - `QB_SYNC_PLEX_URL`: Plex server URL (default: http://localhost:32400)
 - `QB_SYNC_PLEX_TOKEN`: Plex authentication token
 
-### Notification Integration (Optional)
-- `QB_SYNC_NOTIFICATION_ENABLED`: Enable notifications (default: false)
-- `QB_SYNC_SHOUTRRR_URLS`: Comma-separated Shoutrrr URLs (e.g., `slack://token1/token2/token3,discord://webhook_id/webhook_token`)
-- `QB_SYNC_NOTIFICATION_ON_SUCCESS`: Send notifications on successful torrent processing (default: false)
-- `QB_SYNC_NOTIFICATION_ON_ERROR`: Send notifications on errors (default: true)
-- `QB_SYNC_NOTIFICATION_ON_PLEX_ERROR`: Send notifications on Plex refresh failures (default: false)
-- `QB_SYNC_NOTIFICATION_ON_TORRENT_DELETE`: Send notifications when torrents are deleted (default: false)
-
 ### Telegram Bot Integration (Optional)
 - `QB_SYNC_TELEGRAM_ENABLED`: Enable Telegram bot (default: false)
 - `QB_SYNC_TELEGRAM_TOKEN`: Telegram bot token (required if enabled)
 - `QB_SYNC_TELEGRAM_ALLOWED_USERS`: Comma-separated list of allowed Telegram user IDs (optional, defaults to all users)
+- `QB_SYNC_TELEGRAM_ADMIN_CHAT_ID`: Telegram chat ID to receive admin notifications (optional)
 
 ## Key Features
 
@@ -93,41 +86,9 @@ The application uses **environment variables only** for configuration (no config
 2. **File Operations**: Hardlinks with automatic cross-device fallback to copies
 3. **Idempotency**: Skips files that already exist with correct size
 4. **Plex Integration**: Automatic library refreshes for processed files
-5. **Notification System**: Configurable notifications via Shoutrrr for various events
-6. **Graceful Shutdown**: Proper signal handling and cleanup
-7. **Dry Run Mode**: Safe testing without actual file operations
-8. **Telegram Bot**: Add torrents via Telegram messages using magnet links or .torrent files
-
-## Notification Setup
-
-The application uses Shoutrrr for notifications, supporting many platforms:
-
-### Example Notification URLs
-
-**Slack:**
-```
-slack://token1/token2/token3
-```
-
-**Discord:**
-```
-discord://webhook_id/webhook_token
-```
-
-**Telegram:**
-```
-telegram://bot_token/chat_id
-```
-
-**Email:**
-```
-smtp://username:password@host:port/?from=from@example.com&to=to@example.com
-```
-
-Multiple URLs can be combined with commas:
-```
-QB_SYNC_SHOUTRRR_URLS="slack://token1/token2/token3,discord://webhook_id/webhook_token"
-```
+5. **Graceful Shutdown**: Proper signal handling and cleanup
+6. **Dry Run Mode**: Safe testing without actual file operations
+7. **Telegram Bot**: Add torrents via Telegram messages using magnet links or .torrent files with admin notifications
 
 ## Telegram Bot Setup
 

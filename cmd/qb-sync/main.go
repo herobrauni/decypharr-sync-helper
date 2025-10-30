@@ -73,17 +73,7 @@ func main() {
 	} else {
 		log.Printf("  Plex enabled: false")
 	}
-	if cfg.Notification.Enabled {
-		log.Printf("  Notifications enabled: true")
-		log.Printf("  Notification URLs: %d configured", len(cfg.Notification.ShoutrrrURLs))
-		log.Printf("  Notify on success: %t", cfg.Notification.OnSuccess)
-		log.Printf("  Notify on error: %t", cfg.Notification.OnError)
-		log.Printf("  Notify on Plex error: %t", cfg.Notification.OnPlexError)
-		log.Printf("  Notify on torrent delete: %t", cfg.Notification.OnTorrentDelete)
-	} else {
-		log.Printf("  Notifications enabled: false")
-	}
-	if cfg.Telegram.Enabled {
+		if cfg.Telegram.Enabled {
 		log.Printf("  Telegram enabled: true")
 		log.Printf("  Telegram bot will use category: %s", cfg.Monitor.Category)
 		if len(cfg.Telegram.AllowedUserIDs) > 0 {
@@ -152,11 +142,7 @@ func main() {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	// Run monitor in a goroutine
-	go func() {
-		if err := monitor.Run(); err != nil {
-			log.Printf("Monitor error: %v", err)
-		}
-	}()
+	go monitor.Run()
 
 	// Wait for shutdown signal
 	<-sigChan

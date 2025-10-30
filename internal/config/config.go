@@ -9,11 +9,10 @@ import (
 
 // Config represents the application configuration
 type Config struct {
-	QB           QBConfig
-	Monitor      MonitorConfig
-	Plex         PlexConfig
-	Notification NotificationConfig
-	Telegram     TelegramConfig
+	QB       QBConfig
+	Monitor  MonitorConfig
+	Plex     PlexConfig
+	Telegram TelegramConfig
 }
 
 // QBConfig contains qBittorrent connection settings
@@ -45,21 +44,12 @@ type PlexConfig struct {
 	Enabled bool
 }
 
-// NotificationConfig contains notification settings
-type NotificationConfig struct {
-	Enabled         bool
-	ShoutrrrURLs    []string
-	OnSuccess       bool
-	OnError         bool
-	OnPlexError     bool
-	OnTorrentDelete bool
-}
-
 // TelegramConfig contains Telegram bot settings
 type TelegramConfig struct {
 	Enabled        bool
 	Token          string
 	AllowedUserIDs []int64
+	AdminChatID    int64
 }
 
 // LoadConfig loads configuration from environment variables only
@@ -126,30 +116,7 @@ func LoadConfig() (*Config, error) {
 		cfg.Plex.Enabled = plexEnabled == "true" || plexEnabled == "1"
 	}
 
-	// Apply environment variable overrides for NotificationConfig
-	if notifEnabled := os.Getenv("QB_SYNC_NOTIFICATION_ENABLED"); notifEnabled != "" {
-		cfg.Notification.Enabled = notifEnabled == "true" || notifEnabled == "1"
-	}
-	if shoutrrrURLs := os.Getenv("QB_SYNC_SHOUTRRR_URLS"); shoutrrrURLs != "" {
-		cfg.Notification.ShoutrrrURLs = strings.Split(shoutrrrURLs, ",")
-		// Trim whitespace from each URL
-		for i, url := range cfg.Notification.ShoutrrrURLs {
-			cfg.Notification.ShoutrrrURLs[i] = strings.TrimSpace(url)
-		}
-	}
-	if onSuccess := os.Getenv("QB_SYNC_NOTIFICATION_ON_SUCCESS"); onSuccess != "" {
-		cfg.Notification.OnSuccess = onSuccess == "true" || onSuccess == "1"
-	}
-	if onError := os.Getenv("QB_SYNC_NOTIFICATION_ON_ERROR"); onError != "" {
-		cfg.Notification.OnError = onError == "true" || onError == "1"
-	}
-	if onPlexError := os.Getenv("QB_SYNC_NOTIFICATION_ON_PLEX_ERROR"); onPlexError != "" {
-		cfg.Notification.OnPlexError = onPlexError == "true" || onPlexError == "1"
-	}
-	if onTorrentDelete := os.Getenv("QB_SYNC_NOTIFICATION_ON_TORRENT_DELETE"); onTorrentDelete != "" {
-		cfg.Notification.OnTorrentDelete = onTorrentDelete == "true" || onTorrentDelete == "1"
-	}
-
+	
 	// Apply environment variable overrides for TelegramConfig
 	if telegramEnabled := os.Getenv("QB_SYNC_TELEGRAM_ENABLED"); telegramEnabled != "" {
 		cfg.Telegram.Enabled = telegramEnabled == "true" || telegramEnabled == "1"
@@ -169,6 +136,11 @@ func LoadConfig() (*Config, error) {
 				cfg.Telegram.AllowedUserIDs = append(cfg.Telegram.AllowedUserIDs, userID)
 			}
 		}
+	}
+	if adminChatID := os.Getenv("QB_SYNC_TELEGRAM_ADMIN_CHAT_ID"); adminChatID != "" {
+		var chatID int64
+		fmt.Sscanf(adminChatID, "%d", &chatID)
+		cfg.Telegram.AdminChatID = chatID
 	}
 
 	// Set defaults (only for non-required fields)
@@ -257,13 +229,7 @@ func validateConfig(cfg *Config) error {
 		}
 	}
 
-	// Validate Notification configuration if enabled
-	if cfg.Notification.Enabled {
-		if len(cfg.Notification.ShoutrrrURLs) == 0 {
-			return fmt.Errorf("notification.shoutrrr_urls is required when notification.enabled is true (set via QB_SYNC_SHOUTRRR_URLS environment variable)")
-		}
-	}
-
+	
 	// Validate Telegram configuration if enabled
 	if cfg.Telegram.Enabled {
 		if cfg.Telegram.Token == "" {

@@ -6,6 +6,7 @@ import (
 	"log"
 	"regexp"
 	"strings"
+	"net/url"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -15,9 +16,9 @@ import (
 
 // Bot represents the Telegram bot
 type Bot struct {
-	bot     *bot.Bot
+	bot      *bot.Bot
 	qbClient *qbit.Client
-	config  *config.TelegramConfig
+	config   *config.TelegramConfig
 	category string // Will use the monitor category
 }
 
@@ -29,6 +30,12 @@ func NewBot(ctx context.Context, token string, qbClient *qbit.Client, cfg *confi
 		log.Printf("[TELEGRAM] Restricted to %d allowed users", len(cfg.AllowedUserIDs))
 	} else {
 		log.Printf("[TELEGRAM] Access: All users allowed")
+	}
+
+	if cfg.AdminChatID != 0 {
+		log.Printf("[TELEGRAM] Admin chat ID: %d", cfg.AdminChatID)
+	} else {
+		log.Printf("[TELEGRAM] No admin chat ID configured - notifications will only be sent to user chat")
 	}
 
 	telegramBot := &Bot{
@@ -209,7 +216,7 @@ func (b *Bot) handleTorrentMessage(ctx context.Context, api *bot.Bot, update *mo
 	// Process each magnet link
 	for i, magnetLink := range magnetLinks {
 		log.Printf("[TELEGRAM] Processing magnet link %d/%d", i+1, len(magnetLinks))
-		b.processMagnetLink(ctx, update.Message.Chat.ID, magnetLink)
+		b.processMagnetLink(ctx, update.Message.Chat.ID, magnetLink, update.Message.From.FirstName)
 	}
 }
 
@@ -263,11 +270,11 @@ func (b *Bot) handleTorrentFile(ctx context.Context, api *bot.Bot, update *model
 	fileURL := fmt.Sprintf("https://api.telegram.org/file/bot%s/%s", api.Token, file.FilePath)
 
 	// Add torrent from file URL
-	b.processTorrentFile(ctx, update.Message.Chat.ID, fileURL, document.FileName)
+	b.processTorrentFile(ctx, update.Message.Chat.ID, fileURL, document.FileName, update.Message.From.FirstName)
 }
 
 // processMagnetLink adds a magnet link to qBittorrent
-func (b *Bot) processMagnetLink(ctx context.Context, chatID int64, magnetLink string) {
+func (b *Bot) processMagnetLink(ctx context.Context, chatID int64, magnetLink string, userName string) {
 	// First login to qBittorrent
 	if err := b.qbClient.Login(ctx); err != nil {
 		b.bot.SendMessage(ctx, &bot.SendMessageParams{
@@ -287,7 +294,13 @@ func (b *Bot) processMagnetLink(ctx context.Context, chatID int64, magnetLink st
 		return
 	}
 
-	// Send success message
+	// Extract torrent name from magnet link for notification
+	torrentName := extractTorrentNameFromMagnet(magnetLink)
+	if torrentName == "" {
+		torrentName = "Unknown Torrent"
+	}
+
+	// Send success message to user
 	msg := fmt.Sprintf("✅ *Torrent Added Successfully!*\n\n"+
 		"🧭 **Magnet Link added to qBittorrent**\n"+
 		"📁 **Category:** `%s`\n"+
@@ -299,10 +312,17 @@ func (b *Bot) processMagnetLink(ctx context.Context, chatID int64, magnetLink st
 		Text:      msg,
 		ParseMode: models.ParseModeMarkdown,
 	})
+
+	// Send notification to admin chat (if configured)
+	notificationMsg := fmt.Sprintf(
+		"**Torrent:** %s\n**Source:** Telegram (Magnet)\n**Category:** %s\n**Added by:** User %d (%s)",
+		torrentName, b.category, chatID, userName)
+	b.sendNotification(ctx, chatID, "➕ Torrent Added", notificationMsg)
+	log.Printf("[TELEGRAM] Sent torrent added notification for: %s", torrentName)
 }
 
 // processTorrentFile adds a torrent file to qBittorrent
-func (b *Bot) processTorrentFile(ctx context.Context, chatID int64, fileURL, fileName string) {
+func (b *Bot) processTorrentFile(ctx context.Context, chatID int64, fileURL, fileName, userName string) {
 	// First login to qBittorrent
 	if err := b.qbClient.Login(ctx); err != nil {
 		b.bot.SendMessage(ctx, &bot.SendMessageParams{
@@ -322,7 +342,7 @@ func (b *Bot) processTorrentFile(ctx context.Context, chatID int64, fileURL, fil
 		return
 	}
 
-	// Send success message
+	// Send success message to user
 	msg := fmt.Sprintf("✅ *Torrent File Added Successfully!*\n\n"+
 		"📄 **File:** `%s`\n"+
 		"📁 **Category:** `%s`",
@@ -333,6 +353,13 @@ func (b *Bot) processTorrentFile(ctx context.Context, chatID int64, fileURL, fil
 		Text:      msg,
 		ParseMode: models.ParseModeMarkdown,
 	})
+
+	// Send notification to admin chat (if configured)
+	notificationMsg := fmt.Sprintf(
+		"**Torrent:** %s\n**Source:** Telegram (File)\n**Category:** %s\n**Added by:** User %d (%s)",
+		fileName, b.category, chatID, userName)
+	b.sendNotification(ctx, chatID, "➕ Torrent Added", notificationMsg)
+	log.Printf("[TELEGRAM] Sent torrent file added notification for: %s", fileName)
 }
 
 // isAuthorized checks if a user is authorized to use the bot
@@ -372,6 +399,35 @@ func isTransitionalState(state string) bool {
 		}
 	}
 	return false
+}
+
+// sendNotification sends a notification to admin chat (if configured) or the specified chat
+func (b *Bot) sendNotification(ctx context.Context, chatID int64, title, message string) {
+	msg := fmt.Sprintf("📢 *%s*\n\n%s", title, message)
+
+	// Send to admin chat if configured
+	if b.config.AdminChatID != 0 && b.config.AdminChatID != chatID {
+		b.bot.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:    b.config.AdminChatID,
+			Text:      msg,
+			ParseMode: models.ParseModeMarkdown,
+		})
+	}
+}
+
+// extractTorrentNameFromMagnet extracts the display name from a magnet link
+func extractTorrentNameFromMagnet(magnetLink string) string {
+	u, err := url.Parse(magnetLink)
+	if err != nil {
+		return ""
+	}
+
+	query := u.Query()
+	if dn := query.Get("dn"); dn != "" {
+		return dn
+	}
+
+	return ""
 }
 
 // min returns the minimum of two integers
