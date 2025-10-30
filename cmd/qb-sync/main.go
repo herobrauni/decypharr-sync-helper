@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
@@ -25,6 +26,9 @@ var (
 )
 
 func main() {
+	// Force IPv4 preference for all network operations
+	forceIPv4()
+
 	// Define command line flags
 	var (
 		showVersion = flag.Bool("version", false, "Show version information and exit")
@@ -179,4 +183,24 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// forceIPv4 configures the application to prefer IPv4 network connections
+func forceIPv4() {
+	// Configure the default dialer to prefer IPv4
+	net.DefaultResolver = &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			// Force IPv4 by using "tcp4" instead of "tcp"
+			var dialer net.Dialer
+			if network == "tcp" {
+				network = "tcp4"
+			} else if network == "udp" {
+				network = "udp4"
+			}
+			return dialer.DialContext(ctx, network, address)
+		},
+	}
+
+	log.Printf("Network configured to prefer IPv4 connections")
 }
