@@ -2,6 +2,7 @@ package main
 
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -10,6 +11,8 @@ import (
 	"syscall"
 
 	"qb-sync/internal/config"
+	"qb-sync/internal/qbit"
+	"qb-sync/internal/telegram"
 	"qb-sync/internal/worker"
 )
 
@@ -74,6 +77,38 @@ func main() {
 		log.Printf("  Notify on torrent delete: %t", cfg.Notification.OnTorrentDelete)
 	} else {
 		log.Printf("  Notifications enabled: false")
+	}
+	if cfg.Telegram.Enabled {
+		log.Printf("  Telegram enabled: true")
+		log.Printf("  Telegram bot will use category: %s", cfg.Monitor.Category)
+		if len(cfg.Telegram.AllowedUserIDs) > 0 {
+			log.Printf("  Telegram allowed users: %v", cfg.Telegram.AllowedUserIDs)
+		} else {
+			log.Printf("  Telegram allowed users: all users")
+		}
+	} else {
+		log.Printf("  Telegram enabled: false")
+	}
+
+	// Create context for bot
+	ctx := context.Background()
+
+	// Create Telegram bot if enabled
+	var telegramBot *telegram.Bot
+	if cfg.Telegram.Enabled {
+		qbClient, err := qbit.NewClient(&cfg.QB)
+		if err != nil {
+			log.Printf("Failed to create qBittorrent client for Telegram bot: %v", err)
+		} else {
+			telegramBot, err = telegram.NewBot(ctx, cfg.Telegram.Token, qbClient, &cfg.Telegram, cfg.Monitor.Category)
+			if err != nil {
+				log.Printf("Failed to create Telegram bot: %v", err)
+			} else {
+				log.Printf("Telegram bot created successfully")
+				// Start bot in a goroutine
+				go telegramBot.Start(ctx)
+			}
+		}
 	}
 
 	// Create and run monitor

@@ -82,6 +82,11 @@ The application uses **environment variables only** for configuration (no config
 - `QB_SYNC_NOTIFICATION_ON_PLEX_ERROR`: Send notifications on Plex refresh failures (default: false)
 - `QB_SYNC_NOTIFICATION_ON_TORRENT_DELETE`: Send notifications when torrents are deleted (default: false)
 
+### Telegram Bot Integration (Optional)
+- `QB_SYNC_TELEGRAM_ENABLED`: Enable Telegram bot (default: false)
+- `QB_SYNC_TELEGRAM_TOKEN`: Telegram bot token (required if enabled)
+- `QB_SYNC_TELEGRAM_ALLOWED_USERS`: Comma-separated list of allowed Telegram user IDs (optional, defaults to all users)
+
 ## Key Features
 
 1. **Resilient Polling**: Exponential backoff retry logic for API failures
@@ -91,6 +96,7 @@ The application uses **environment variables only** for configuration (no config
 5. **Notification System**: Configurable notifications via Shoutrrr for various events
 6. **Graceful Shutdown**: Proper signal handling and cleanup
 7. **Dry Run Mode**: Safe testing without actual file operations
+8. **Telegram Bot**: Add torrents via Telegram messages using magnet links or .torrent files
 
 ## Notification Setup
 
@@ -123,6 +129,38 @@ Multiple URLs can be combined with commas:
 QB_SYNC_SHOUTRRR_URLS="slack://token1/token2/token3,discord://webhook_id/webhook_token"
 ```
 
+## Telegram Bot Setup
+
+The application includes a Telegram bot that can receive magnet links and .torrent files and add them to qBittorrent.
+
+### Setting up a Telegram Bot
+
+1. **Create a Bot:**
+   - Talk to @BotFather on Telegram
+   - Use `/newbot` command to create a new bot
+   - Get the bot token (looks like `1234567890:ABCdefGHIjklMNOpqrsTUVwxyz`)
+
+2. **Get Your User ID (Optional):**
+   - Talk to @userinfobot on Telegram to get your user ID
+   - This is used to restrict access to your bot
+
+3. **Configure Environment Variables:**
+   ```bash
+   export QB_SYNC_TELEGRAM_ENABLED=true
+   export QB_SYNC_TELEGRAM_TOKEN="your_bot_token_here"
+   export QB_SYNC_TELEGRAM_ALLOWED_USERS="123456789,987654321"  # Optional
+   ```
+
+### Telegram Bot Commands
+
+- `/start` - Show welcome message
+- `/help` - Show help information
+- `/status` - Show qBittorrent status
+- Send magnet links directly to add torrents
+- Upload .torrent files to add torrents
+
+All torrents added via Telegram will be automatically assigned to the configured category.
+
 ## Common Issues
 
 - qBittorrent WebUI must be enabled and accessible
@@ -135,4 +173,61 @@ QB_SYNC_SHOUTRRR_URLS="slack://token1/token2/token3,discord://webhook_id/webhook
 
 - Go 1.21+
 - github.com/containrrr/shoutrrr for notifications
+- github.com/go-telegram/bot for Telegram bot integration
 - gopkg.in/yaml.v3 for configuration (though currently only env vars are used)
+
+## Dependency Management
+
+This project uses [Renovate Bot](https://github.com/renovatebot/renovate) for automated dependency management.
+
+### Renovate Configuration
+
+- **Configuration Files**:
+  - `renovate.json` - Main configuration (JSON format)
+  - `.github/renovate.json5` - Alternative configuration (JSON5 format)
+- **Schedule**: Runs every weekend (Saturday/Sunday)
+- **Timezone**: Europe/Vienna
+- **Automerge**: Enabled for most dependency updates
+- **Grouping**: Dependencies are grouped by type (Go deps, GitHub Actions, etc.)
+- **Security**: Vulnerability alerts are processed immediately
+
+### Renovate Features
+
+- **Dependency Dashboard**: Creates an issue with dependency overview
+- **Lock File Maintenance**: Monthly go.mod tidy and cleanup
+- **Security Updates**: Immediate PRs for security vulnerabilities
+- **Auto-merge**: Safe updates are merged automatically
+- **Grouped PRs**: Related dependencies are updated together
+- **Go Modules**: Full support with `go mod tidy` after updates
+
+### Manual Renovate Runs
+
+If you need to run Renovate manually:
+
+```bash
+# Using Docker (recommended)
+docker run -it --rm \
+  -v "$(pwd):/workspace" \
+  -e LOG_LEVEL=debug \
+  renovate/renovate
+
+# Using npm
+npx renovate
+
+# Local development runs
+renovate --dry-run
+```
+
+### Configuration Customization
+
+To customize Renovate behavior:
+
+1. Edit `renovate.json` or `.github/renovate.json5`
+2. Test configuration: `renovate --dry-run`
+3. Push changes to trigger a Renovate run
+
+Common customizations:
+- Change `schedule` for different update frequency
+- Modify `automerge` settings for your workflow
+- Adjust `assignees` and `reviewers` for your team
+- Add custom `packageRules` for specific dependencies

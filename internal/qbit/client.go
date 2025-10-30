@@ -1,11 +1,13 @@
 package qbit
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -258,6 +260,88 @@ func isTransitionalState(state string) bool {
 		}
 	}
 	return false
+}
+
+// AddTorrentFromMagnet adds a torrent from a magnet link
+func (c *Client) AddTorrentFromMagnet(ctx context.Context, magnetLink, category string) error {
+	addURL := c.baseURL.ResolveReference(&url.URL{
+		Path: "/api/v2/torrents/add",
+	})
+
+	// Prepare form data
+	data := fmt.Sprintf("urls=%s&category=%s",
+		url.QueryEscape(magnetLink),
+		url.QueryEscape(category))
+
+	req, err := http.NewRequestWithContext(ctx, "POST", addURL.String(), strings.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("failed to create add torrent request: %w", err)
+	}
+
+	// Set required headers
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Referer", c.baseURL.String())
+	req.Header.Set("Origin", c.baseURL.String())
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to perform add torrent request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("add torrent failed with status: %s", resp.Status)
+	}
+
+	return nil
+}
+
+// AddTorrentFromFile adds a torrent from a file
+func (c *Client) AddTorrentFromFile(ctx context.Context, fileURL, category string) error {
+	addURL := c.baseURL.ResolveReference(&url.URL{
+		Path: "/api/v2/torrents/add",
+	})
+
+	// For file uploads, we need to use multipart form data
+	var requestBody bytes.Buffer
+	writer := multipart.NewWriter(&requestBody)
+
+	// Add the file URL
+	if err := writer.WriteField("urls", fileURL); err != nil {
+		return fmt.Errorf("failed to write file URL to form: %w", err)
+	}
+
+	// Add the category
+	if err := writer.WriteField("category", category); err != nil {
+		return fmt.Errorf("failed to write category to form: %w", err)
+	}
+
+	// Close the writer to finalize the form data
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("failed to close form writer: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", addURL.String(), &requestBody)
+	if err != nil {
+		return fmt.Errorf("failed to create add torrent request: %w", err)
+	}
+
+	// Set required headers
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Referer", c.baseURL.String())
+	req.Header.Set("Origin", c.baseURL.String())
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to perform add torrent request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("add torrent failed with status: %s", resp.Status)
+	}
+
+	return nil
 }
 
 // decodeJSON is a helper function to decode JSON response
