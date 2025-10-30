@@ -1,0 +1,6 @@
+qb-sync
+qb-sync.yaml
+
+# Renovate
+renovate-debug.log*
+.cache/renovate/
