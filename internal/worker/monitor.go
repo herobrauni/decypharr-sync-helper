@@ -241,27 +241,39 @@ func (m *Monitor) refreshPlexLibraries(torrent *qbit.Torrent, torrentFiles []qbi
 		return fmt.Errorf("Plex client not initialized")
 	}
 
-	// Get directories to refresh
-	directories := make(map[string]bool)
+	m.logger.Printf("Refreshing Plex libraries for torrent '%s'", torrent.Name)
+
+	// Keep track of unique paths we've already refreshed to avoid duplicate refreshes
+	refreshedPaths := make(map[string]bool)
+
 	for _, file := range torrentFiles {
-		dir := filepath.Dir(file.Name)
-		if dir != "." {
-			directories[dir] = true
+		// Build the destination path for this file
+		destPath, err := files.BuildDestPath(&m.config.Monitor, torrent, &file)
+		if err != nil {
+			m.logger.Printf("Failed to build destination path for file '%s': %v", file.Name, err)
+			continue
 		}
+
+		// Get the directory containing the file
+		dirPath := filepath.Dir(destPath)
+
+		// Skip if we've already refreshed this directory
+		if refreshedPaths[dirPath] {
+			continue
+		}
+
+		// Refresh the specific path in Plex
+		m.logger.Printf("Triggering Plex refresh for path: %s", destPath)
+		if err := m.plexClient.RefreshPathForFile(m.ctx, destPath); err != nil {
+			m.logger.Printf("Failed to refresh Plex path '%s': %v", dirPath, err)
+			continue
+		}
+
+		m.logger.Printf("Successfully refreshed Plex path: %s", dirPath)
+		refreshedPaths[dirPath] = true
 	}
 
-	// Also refresh the torrent save path
-	directories[filepath.Base(torrent.SavePath)] = true
-
-	// Refresh each unique directory
-	for dir := range directories {
-		m.logger.Printf("Refreshing Plex library for directory: %s", dir)
-		if err := m.plexClient.RefreshLibrary(m.ctx, dir); err != nil {
-			m.logger.Printf("Failed to refresh Plex library for directory '%s': %v", dir, err)
-			// Continue with other directories even if one fails
-		}
-	}
-
+	m.logger.Printf("Completed Plex library refresh for torrent '%s'", torrent.Name)
 	return nil
 }
 
