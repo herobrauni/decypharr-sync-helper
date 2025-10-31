@@ -3,14 +3,17 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 )
 
 // Config represents the application configuration
 type Config struct {
-	QB      QBConfig
-	Monitor MonitorConfig
-	Plex    PlexConfig
+	QB       QBConfig
+	Monitor  MonitorConfig
+	Plex     PlexConfig
+	Telegram TelegramConfig
 }
 
 // QBConfig contains qBittorrent connection settings
@@ -40,6 +43,13 @@ type PlexConfig struct {
 	URL     string
 	Token   string
 	Enabled bool
+}
+
+// TelegramConfig contains Telegram Bot settings
+type TelegramConfig struct {
+	Token         string
+	AllowedUsers  []int64
+	Enabled       bool
 }
 
 
@@ -107,7 +117,24 @@ func LoadConfig() (*Config, error) {
 		cfg.Plex.Enabled = plexEnabled == "true" || plexEnabled == "1"
 	}
 
-	
+	// Apply environment variable overrides for TelegramConfig
+	if telegramToken := os.Getenv("QB_SYNC_TELEGRAM_TOKEN"); telegramToken != "" {
+		cfg.Telegram.Token = telegramToken
+	}
+	if allowedUsers := os.Getenv("QB_SYNC_TELEGRAM_ALLOWED_USERS"); allowedUsers != "" {
+		userIDs := strings.Split(allowedUsers, ",")
+		for _, userID := range userIDs {
+			userID = strings.TrimSpace(userID)
+			if id, err := strconv.ParseInt(userID, 10, 64); err == nil {
+				cfg.Telegram.AllowedUsers = append(cfg.Telegram.AllowedUsers, id)
+			}
+		}
+	}
+	if telegramEnabled := os.Getenv("QB_SYNC_TELEGRAM_ENABLED"); telegramEnabled != "" {
+		cfg.Telegram.Enabled = telegramEnabled == "true" || telegramEnabled == "1"
+	}
+
+
 	// Set defaults (only for non-required fields)
 	if cfg.Monitor.PollInterval == 0 {
 		cfg.Monitor.PollInterval = 30 * time.Second
@@ -194,6 +221,15 @@ func validateConfig(cfg *Config) error {
 		}
 	}
 
-	
+	// Validate Telegram configuration if enabled
+	if cfg.Telegram.Enabled {
+		if cfg.Telegram.Token == "" {
+			return fmt.Errorf("telegram.token is required when telegram.enabled is true (set via QB_SYNC_TELEGRAM_TOKEN environment variable)")
+		}
+		if len(cfg.Telegram.AllowedUsers) == 0 {
+			return fmt.Errorf("telegram.allowed_users is required when telegram.enabled is true (set via QB_SYNC_TELEGRAM_ALLOWED_USERS environment variable)")
+		}
+	}
+
 	return nil
 }

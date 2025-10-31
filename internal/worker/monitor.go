@@ -15,18 +15,20 @@ import (
 	"qb-sync/internal/files"
 	"qb-sync/internal/plex"
 	"qb-sync/internal/qbit"
+	"qb-sync/internal/telegram"
 )
 
 // Monitor handles the polling and processing of torrents
 type Monitor struct {
-	client     *qbit.Client
-	plexClient *plex.Client
-	config     *config.Config
-	logger     *log.Logger
-	ctx        context.Context
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
-	backoff    time.Duration
+	client       *qbit.Client
+	plexClient   *plex.Client
+	telegramBot  *telegram.Bot
+	config       *config.Config
+	logger       *log.Logger
+	ctx          context.Context
+	cancel       context.CancelFunc
+	wg           sync.WaitGroup
+	backoff      time.Duration
 }
 
 // NewMonitor creates a new monitor instance
@@ -46,6 +48,15 @@ func NewMonitor(cfg *config.Config) (*Monitor, error) {
 		}
 	}
 
+	// Create Telegram bot if enabled
+	var telegramBot *telegram.Bot
+	if cfg.Telegram.Enabled {
+		telegramBot, err = telegram.NewBot(cfg.Telegram.Token, cfg.Telegram.AllowedUsers, client, true)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create Telegram bot: %w", err)
+		}
+	}
+
 	// Create context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -53,13 +64,14 @@ func NewMonitor(cfg *config.Config) (*Monitor, error) {
 	logger := log.New(os.Stdout, "[qb-sync] ", log.LstdFlags)
 
 	return &Monitor{
-		client:     client,
-		plexClient: plexClient,
-		config:     cfg,
-		logger:     logger,
-		ctx:        ctx,
-		cancel:     cancel,
-		backoff:    time.Second, // Initial backoff
+		client:      client,
+		plexClient:  plexClient,
+		telegramBot: telegramBot,
+		config:      cfg,
+		logger:      logger,
+		ctx:         ctx,
+		cancel:      cancel,
+		backoff:     time.Second, // Initial backoff
 	}, nil
 }
 
@@ -75,6 +87,17 @@ func (m *Monitor) Run() {
 	// Add signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// Start Telegram bot if enabled
+	if m.telegramBot != nil && m.telegramBot.IsEnabled() {
+		m.wg.Add(1)
+		go func() {
+			defer m.wg.Done()
+			if err := m.telegramBot.Start(m.ctx); err != nil {
+				m.logger.Printf("Telegram bot error: %v", err)
+			}
+		}()
+	}
 
 	// Start the monitoring loop in a goroutine
 	m.wg.Add(1)
@@ -245,6 +268,7 @@ func (m *Monitor) refreshPlexLibraries(torrent *qbit.Torrent, torrentFiles []qbi
 
 	// Keep track of unique paths we've already refreshed to avoid duplicate refreshes
 	refreshedPaths := make(map[string]bool)
+	refreshSuccess := false
 
 	for _, file := range torrentFiles {
 		// Build the destination path for this file
@@ -271,9 +295,16 @@ func (m *Monitor) refreshPlexLibraries(torrent *qbit.Torrent, torrentFiles []qbi
 
 		m.logger.Printf("Successfully refreshed Plex path: %s", dirPath)
 		refreshedPaths[dirPath] = true
+		refreshSuccess = true
 	}
 
 	m.logger.Printf("Completed Plex library refresh for torrent '%s'", torrent.Name)
+
+	// Send Telegram notification if Plex refresh was successful and Telegram bot is enabled
+	if refreshSuccess && m.telegramBot != nil && m.telegramBot.IsEnabled() {
+		m.telegramBot.SendTorrentAddedNotification(torrent.Name)
+	}
+
 	return nil
 }
 

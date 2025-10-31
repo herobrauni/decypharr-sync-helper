@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"qb-sync/internal/config"
+	"qb-sync/internal/telegram"
 )
 
 // Torrent represents a torrent from qBittorrent
@@ -342,6 +343,32 @@ func (c *Client) AddTorrentFromFile(ctx context.Context, fileURL, category strin
 	}
 
 	return nil
+}
+
+// GetAllTorrents implements the QBClient interface for Telegram bot
+func (c *Client) GetAllTorrents(ctx context.Context) ([]telegram.TorrentInfo, error) {
+	torrents, err := c.ListAllTorrents(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert to Telegram bot format
+	var torrentInfos []telegram.TorrentInfo
+	for _, t := range torrents {
+		torrentInfos = append(torrentInfos, telegram.TorrentInfo{
+			Name:     t.Name,
+			Category: t.Category,
+			State:    t.State,
+			Hash:     t.Hash,
+		})
+	}
+
+	return torrentInfos, nil
+}
+
+// AddTorrent implements the QBClient interface for Telegram bot
+func (c *Client) AddTorrent(ctx context.Context, magnetLink, category string) error {
+	return c.AddTorrentFromMagnet(ctx, magnetLink, category)
 }
 
 // decodeJSON is a helper function to decode JSON response
