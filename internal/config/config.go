@@ -3,16 +3,14 @@ package config
 import (
 	"fmt"
 	"os"
-	"strings"
 	"time"
 )
 
 // Config represents the application configuration
 type Config struct {
-	QB       QBConfig
-	Monitor  MonitorConfig
-	Plex     PlexConfig
-	Telegram TelegramConfig
+	QB      QBConfig
+	Monitor MonitorConfig
+	Plex    PlexConfig
 }
 
 // QBConfig contains qBittorrent connection settings
@@ -44,13 +42,6 @@ type PlexConfig struct {
 	Enabled bool
 }
 
-// TelegramConfig contains Telegram bot settings
-type TelegramConfig struct {
-	Enabled        bool
-	Token          string
-	AllowedUserIDs []int64
-	AdminChatID    int64
-}
 
 // LoadConfig loads configuration from environment variables only
 func LoadConfig() (*Config, error) {
@@ -117,32 +108,6 @@ func LoadConfig() (*Config, error) {
 	}
 
 	
-	// Apply environment variable overrides for TelegramConfig
-	if telegramEnabled := os.Getenv("QB_SYNC_TELEGRAM_ENABLED"); telegramEnabled != "" {
-		cfg.Telegram.Enabled = telegramEnabled == "true" || telegramEnabled == "1"
-	}
-	if telegramToken := os.Getenv("QB_SYNC_TELEGRAM_TOKEN"); telegramToken != "" {
-		cfg.Telegram.Token = telegramToken
-	}
-	if telegramUsers := os.Getenv("QB_SYNC_TELEGRAM_ALLOWED_USERS"); telegramUsers != "" {
-		// Parse comma-separated user IDs
-		userStrs := strings.Split(telegramUsers, ",")
-		for _, userStr := range userStrs {
-			userStr = strings.TrimSpace(userStr)
-			if userStr != "" {
-				// For simplicity, we'll parse as int64 (in a real implementation, you might want better error handling)
-				var userID int64
-				fmt.Sscanf(userStr, "%d", &userID)
-				cfg.Telegram.AllowedUserIDs = append(cfg.Telegram.AllowedUserIDs, userID)
-			}
-		}
-	}
-	if adminChatID := os.Getenv("QB_SYNC_TELEGRAM_ADMIN_CHAT_ID"); adminChatID != "" {
-		var chatID int64
-		fmt.Sscanf(adminChatID, "%d", &chatID)
-		cfg.Telegram.AdminChatID = chatID
-	}
-
 	// Set defaults (only for non-required fields)
 	if cfg.Monitor.PollInterval == 0 {
 		cfg.Monitor.PollInterval = 30 * time.Second
@@ -230,12 +195,5 @@ func validateConfig(cfg *Config) error {
 	}
 
 	
-	// Validate Telegram configuration if enabled
-	if cfg.Telegram.Enabled {
-		if cfg.Telegram.Token == "" {
-			return fmt.Errorf("telegram.token is required when telegram.enabled is true (set via QB_SYNC_TELEGRAM_TOKEN environment variable)")
-		}
-	}
-
 	return nil
 }

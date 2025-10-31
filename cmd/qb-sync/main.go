@@ -10,11 +10,8 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"qb-sync/internal/config"
-	"qb-sync/internal/qbit"
-	"qb-sync/internal/telegram"
 	"qb-sync/internal/worker"
 )
 
@@ -72,63 +69,6 @@ func main() {
 		log.Printf("  Plex enabled: true")
 	} else {
 		log.Printf("  Plex enabled: false")
-	}
-		if cfg.Telegram.Enabled {
-		log.Printf("  Telegram enabled: true")
-		log.Printf("  Telegram bot will use category: %s", cfg.Monitor.Category)
-		if len(cfg.Telegram.AllowedUserIDs) > 0 {
-			log.Printf("  Telegram allowed users: %v", cfg.Telegram.AllowedUserIDs)
-		} else {
-			log.Printf("  Telegram allowed users: all users")
-		}
-	} else {
-		log.Printf("  Telegram enabled: false")
-	}
-
-	// Create context for bot
-	ctx := context.Background()
-
-	// Create Telegram bot if enabled
-	var telegramBot *telegram.Bot
-	if cfg.Telegram.Enabled {
-		log.Printf("Initializing Telegram bot...")
-
-		// Validate Telegram token
-		if cfg.Telegram.Token == "" {
-			log.Printf("ERROR: Telegram token is empty. Please set QB_SYNC_TELEGRAM_TOKEN environment variable.")
-		} else {
-			log.Printf("Telegram token found (length: %d, starts with: %s...)", len(cfg.Telegram.Token), cfg.Telegram.Token[:min(10, len(cfg.Telegram.Token))])
-
-			// Create qBittorrent client for Telegram bot
-			qbClient, err := qbit.NewClient(&cfg.QB)
-			if err != nil {
-				log.Printf("ERROR: Failed to create qBittorrent client for Telegram bot: %v", err)
-			} else {
-				log.Printf("qBittorrent client created successfully for Telegram bot")
-
-				// Create Telegram bot
-				telegramBot, err = telegram.NewBot(ctx, cfg.Telegram.Token, qbClient, &cfg.Telegram, cfg.Monitor.Category)
-				if err != nil {
-					log.Printf("ERROR: Failed to create Telegram bot: %v", err)
-					log.Printf("ERROR: Please check:")
-					log.Printf("  1. Telegram token is valid")
-					log.Printf("  2. Network connectivity to Telegram API")
-					log.Printf("  3. Bot has been created and activated via @BotFather")
-				} else {
-					log.Printf("SUCCESS: Telegram bot created successfully")
-					log.Printf("Starting Telegram bot in background...")
-					// Start bot in a goroutine
-					go telegramBot.Start(ctx)
-
-					// Give the bot a moment to start up and log any immediate connection issues
-					go func() {
-						// Small delay to allow bot to initialize
-						time.Sleep(2 * time.Second)
-						log.Printf("Telegram bot should now be running and ready to receive messages")
-					}()
-				}
-			}
-		}
 	}
 
 	// Create and run monitor
