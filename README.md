@@ -1,6 +1,6 @@
 # qb-sync
 
-A Go-based application that monitors qBittorrent for completed torrents and performs file operations (hardlinks or copies) to destination directories, with optional Plex Media Server integration.
+A Go-based application that monitors qBittorrent for completed torrents and performs file operations (hardlinks or copies) to destination directories, with optional Plex Media Server and Telegram Bot integration.
 
 ## Quick Start
 
@@ -40,6 +40,11 @@ QB_SYNC_LOG_LEVEL="info"                           # "debug", "info" (default), 
 QB_SYNC_PLEX_ENABLED="true"                        # Enable Plex integration (default: false)
 QB_SYNC_PLEX_URL="http://localhost:32400"          # Plex server URL (default: http://localhost:32400)
 QB_SYNC_PLEX_TOKEN="your_plex_token_here"          # Plex authentication token (required if enabled)
+
+# Telegram Bot integration (optional)
+QB_SYNC_TELEGRAM_ENABLED="true"                    # Enable Telegram bot integration (default: false)
+QB_SYNC_TELEGRAM_TOKEN="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"  # Bot token from BotFather (required if enabled)
+QB_SYNC_TELEGRAM_ALLOWED_USERS="123456789,987654321"  # Comma-separated list of allowed user IDs (required if enabled)
 ```
 
 ## Usage Examples
@@ -60,6 +65,18 @@ export QB_SYNC_CATEGORY="tv-shows"
 export QB_SYNC_DEST_PATH="/data/tv-shows"
 export QB_SYNC_PLEX_ENABLED="true"
 export QB_SYNC_PLEX_TOKEN="your_plex_token"
+
+./qb-sync
+```
+
+### With Telegram Bot Integration
+```bash
+export QB_SYNC_BASE_URL="http://localhost:8080"
+export QB_SYNC_CATEGORY="movies"
+export QB_SYNC_DEST_PATH="/data/movies"
+export QB_SYNC_TELEGRAM_ENABLED="true"
+export QB_SYNC_TELEGRAM_TOKEN="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+export QB_SYNC_TELEGRAM_ALLOWED_USERS="123456789"
 
 ./qb-sync
 ```
@@ -88,7 +105,24 @@ go build -ldflags "-X main.Version=1.0.0 -X main.BuildTime=$(date -u +%Y-%m-%dT%
 1. **Monitor**: Polls qBittorrent at regular intervals for completed torrents in the specified category
 2. **Process**: Performs hardlinks (or copies) of torrent files to the destination directory
 3. **Refresh**: Optionally triggers Plex library refreshes for the processed files
-4. **Cleanup**: Optionally deletes torrents from qBittorrent after successful processing
+4. **Notify**: Optionally sends Telegram notifications when torrents are added to Plex
+5. **Cleanup**: Optionally deletes torrents from qBittorrent after successful processing
+
+## Telegram Bot Features
+
+When enabled, the Telegram bot provides:
+
+### Commands
+- `/status` - List all torrents with their names, categories, and current states
+- `/add <magnet_link>` - Add a new torrent using a magnet link (uses configured category)
+
+### Notifications
+- Automatic notifications when torrents from the monitored category are successfully processed and added to Plex
+- Success/error feedback for torrent addition requests
+
+### Security
+- User authentication via Telegram user IDs
+- Only authorized users can interact with the bot and receive notifications
 
 ## Features
 
@@ -96,6 +130,7 @@ go build -ldflags "-X main.Version=1.0.0 -X main.BuildTime=$(date -u +%Y-%m-%dT%
 - ✅ Hardlinks with automatic cross-device fallback to copies
 - ✅ Idempotent operations (skips existing files)
 - ✅ Plex Media Server integration
+- ✅ Telegram Bot integration for remote control and notifications
 - ✅ Graceful shutdown handling
 - ✅ Dry run mode for safe testing
 - ✅ Environment-based configuration
@@ -107,6 +142,7 @@ go build -ldflags "-X main.Version=1.0.0 -X main.BuildTime=$(date -u +%Y-%m-%dT%
 - qBittorrent with WebUI enabled
 - Access to qBittorrent WebUI API
 - (Optional) Plex Media Server with authentication token
+- (Optional) Telegram Bot token from BotFather and authorized user IDs
 
 ## Docker
 

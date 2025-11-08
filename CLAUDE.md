@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Go-based application called `qb-sync` that monitors qBittorrent for completed torrents and performs file operations (hardlinks or copies) to destination directories, with optional Plex Media Server integration. The application is designed to run as a service that polls qBittorrent at regular intervals.
+This is a Go-based application called `qb-sync` that monitors qBittorrent for completed torrents and performs file operations (hardlinks or copies) to destination directories, with optional Plex Media Server and Telegram Bot integration. The application is designed to run as a service that polls qBittorrent at regular intervals.
 
 ## Architecture
 
@@ -16,6 +16,7 @@ The application follows a modular structure:
 - **internal/files/**: File operations (hardlink/copy with cross-device fallback)
 - **internal/worker/**: Main monitoring logic and orchestration
 - **internal/plex/**: Plex Media Server API client for library refreshes
+- **internal/telegram/**: Telegram Bot integration for remote control and notifications
 
 ## Build and Development Commands
 
@@ -73,14 +74,27 @@ The application uses **environment variables only** for configuration (no config
 - `QB_SYNC_PLEX_URL`: Plex server URL (default: http://localhost:32400)
 - `QB_SYNC_PLEX_TOKEN`: Plex authentication token
 
+### Telegram Bot Integration (Optional)
+- `QB_SYNC_TELEGRAM_ENABLED`: Enable Telegram bot integration (default: false)
+- `QB_SYNC_TELEGRAM_TOKEN`: Telegram bot token from BotFather
+- `QB_SYNC_TELEGRAM_ALLOWED_USERS`: Comma-separated list of allowed Telegram user IDs
+
 ## Key Features
 
 1. **Resilient Polling**: Exponential backoff retry logic for API failures
 2. **File Operations**: Hardlinks with automatic cross-device fallback to copies
 3. **Idempotency**: Skips files that already exist with correct size
 4. **Plex Integration**: Automatic library refreshes for processed files
-5. **Graceful Shutdown**: Proper signal handling and cleanup
-6. **Dry Run Mode**: Safe testing without actual file operations
+5. **Telegram Bot Integration**: Remote control via Telegram commands and notifications
+6. **Graceful Shutdown**: Proper signal handling and cleanup
+7. **Dry Run Mode**: Safe testing without actual file operations
+
+### Telegram Bot Commands
+When enabled, the Telegram bot supports the following commands for authorized users:
+- `/status` - List all torrents with their names, categories, and current states
+- `/add <magnet_link>` - Add a new torrent using a magnet link (uses configured category)
+
+The bot also sends automatic notifications when torrents from the monitored category are successfully processed and added to Plex.
 
 ## Common Issues
 
@@ -88,6 +102,8 @@ The application uses **environment variables only** for configuration (no config
 - Ensure the qBittorrent user has permission to access torrent categories
 - Cross-device hardlinks require filesystem support or fallback configuration
 - Plex tokens are required for library refreshes when enabled
+- Telegram bot requires a valid bot token and authorized user IDs to function
+- Make sure the Telegram bot has necessary permissions in your chat/group
 
 ## Dependencies
 

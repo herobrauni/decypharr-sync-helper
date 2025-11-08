@@ -167,7 +167,8 @@ func FilterCompletedTorrents(torrents []Torrent, category string) []Torrent {
 			continue
 		}
 		// Filter for truly completed torrents (progress == 1.0 and not in transitional states)
-		if t.Progress == 1.0 && !isTransitionalState(t.State) {
+		// Also explicitly include torrents in finished states (pausedUP, uploading, etc.)
+		if (t.Progress == 1.0 && !isTransitionalState(t.State)) || isFinishedState(t.State) {
 			completed = append(completed, t)
 		}
 	}
@@ -256,6 +257,24 @@ func isTransitionalState(state string) bool {
 		"moving", "metaDL", "allocating",
 	}
 	for _, s := range transitionalStates {
+		if state == s {
+			return true
+		}
+	}
+	return false
+}
+
+// isFinishedState checks if a torrent is in a finished/completed state
+// These states indicate the torrent download is complete and ready for import
+func isFinishedState(state string) bool {
+	finishedStates := []string{
+		"pausedUP",    // Paused while seeding (complete but paused)
+		"uploading",   // Seeding/uploading (complete and active)
+		"stalledUP",   // Seeding but no connections (complete but stalled)
+		"queuedUP",    // Queued for seeding (complete but queued)
+		"forcedUP",    // Forced seeding (complete and forced)
+	}
+	for _, s := range finishedStates {
 		if state == s {
 			return true
 		}

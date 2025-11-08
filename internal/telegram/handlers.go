@@ -158,27 +158,6 @@ func (b *Bot) formatStateName(state string) string {
 	return state
 }
 
-// isValidMagnetLink checks if the provided string is a valid magnet link
-func (b *Bot) isValidMagnetLink(link string) bool {
-	return strings.HasPrefix(link, "magnet:?") && strings.Contains(link, "xt=urn:btih:")
-}
-
-// extractHashFromMagnet extracts the hash from a magnet link
-func (b *Bot) extractHashFromMagnet(link string) string {
-	// Look for xt=urn:btih: parameter
-	parts := strings.Split(link, "xt=urn:btih:")
-	if len(parts) < 2 {
-		return ""
-	}
-
-	// Extract hash (until next parameter or end of string)
-	hashAndMore := parts[1]
-	if ampersandIndex := strings.Index(hashAndMore, "&"); ampersandIndex != -1 {
-		return hashAndMore[:ampersandIndex]
-	}
-	return hashAndMore
-}
-
 // SendTorrentAddedNotification sends a notification when a torrent is added to Plex
 func (b *Bot) SendTorrentAddedNotification(torrentName string) {
 	if !b.isEnabled {

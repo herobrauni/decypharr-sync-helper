@@ -308,20 +308,6 @@ func (m *Monitor) refreshPlexLibraries(torrent *qbit.Torrent, torrentFiles []qbi
 	return nil
 }
 
-// isTransitionalState checks if a torrent is in a transitional state
-func isTransitionalState(state string) bool {
-	transitionalStates := []string{
-		"checkingDL", "checkingUP", "checkingResumeData",
-		"moving", "metaDL", "allocating",
-	}
-	for _, s := range transitionalStates {
-		if state == s {
-			return true
-		}
-	}
-	return false
-}
-
 // min returns the minimum of two durations
 func min(a, b time.Duration) time.Duration {
 	if a < b {

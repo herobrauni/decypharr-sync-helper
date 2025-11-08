@@ -105,15 +105,77 @@ func (b *Bot) handleMessage(ctx context.Context, message *tgbotapi.Message) {
 	log.Printf("telegram: received command '%s' from user %d (%s)",
 		message.Text, message.From.ID, message.From.UserName)
 
-	// Handle commands
+	// Handle commands and magnet links
 	switch {
 	case strings.HasPrefix(message.Text, "/status"):
 		b.handleStatusCommand(ctx, message)
 	case strings.HasPrefix(message.Text, "/add"):
 		b.handleAddCommand(ctx, message)
+	case strings.HasPrefix(message.Text, "magnet:"):
+		// Auto-detect magnet links and add them
+		b.handleMagnetLink(ctx, message)
 	default:
 		b.sendHelpMessage(message.Chat.ID)
 	}
+}
+
+// handleMagnetLink handles raw magnet links sent without /add command
+func (b *Bot) handleMagnetLink(ctx context.Context, message *tgbotapi.Message) {
+	magnetLink := strings.TrimSpace(message.Text)
+
+	// Validate magnet link
+	if !b.isValidMagnetLink(magnetLink) {
+		b.sendMessage(message.Chat.ID, "❌ *Error*\n\nInvalid magnet link format.\n\nMagnet links should start with `magnet:?` and contain `xt=urn:btih:`")
+		return
+	}
+
+	// Extract hash from magnet link for logging
+	hash := b.extractHashFromMagnet(magnetLink)
+	logPrefix := hash
+	if logPrefix == "" {
+		logPrefix = "unknown"
+	}
+
+	log.Printf("telegram: adding torrent %s for user %d (auto-detected magnet link)", logPrefix, message.From.ID)
+
+	// Add torrent using qBittorrent client
+	err := b.qbClient.AddTorrent(ctx, magnetLink, "")
+	if err != nil {
+		log.Printf("telegram: failed to add torrent %s: %v", logPrefix, err)
+		b.sendMessage(message.Chat.ID, "❌ *Error*\n\nFailed to add torrent. Please check the magnet link and try again.")
+		return
+	}
+
+	log.Printf("telegram: successfully added torrent %s", logPrefix)
+
+	// Send success message
+	successText := fmt.Sprintf("✅ *Success*\n\nTorrent added successfully!\n\n*Hash:* `%s`", hash)
+	if hash == "" {
+		successText = "✅ *Success*\n\nTorrent added successfully!"
+	}
+
+	b.sendMessage(message.Chat.ID, successText)
+}
+
+// isValidMagnetLink checks if the provided string is a valid magnet link
+func (b *Bot) isValidMagnetLink(link string) bool {
+	return strings.HasPrefix(link, "magnet:?") && strings.Contains(link, "xt=urn:btih:")
+}
+
+// extractHashFromMagnet extracts the hash from a magnet link
+func (b *Bot) extractHashFromMagnet(link string) string {
+	// Look for xt=urn:btih: parameter
+	parts := strings.Split(link, "xt=urn:btih:")
+	if len(parts) < 2 {
+		return ""
+	}
+
+	// Extract hash (until next parameter or end of string)
+	hashAndMore := parts[1]
+	if ampersandIndex := strings.Index(hashAndMore, "&"); ampersandIndex != -1 {
+		return hashAndMore[:ampersandIndex]
+	}
+	return hashAndMore
 }
 
 // isUserAllowed checks if a user is authorized to use the bot
@@ -132,6 +194,7 @@ func (b *Bot) sendMessage(chatID int64, text string) {
 
 	if _, err := b.api.Send(msg); err != nil {
 		log.Printf("telegram: failed to send message to chat %d: %v", chatID, err)
+		log.Printf("telegram: message content that failed: %q", text)
 	}
 }
 
@@ -145,10 +208,12 @@ func (b *Bot) sendHelpMessage(chatID int64) {
 	helpText := `🤖 *QB Sync Bot Commands*
 
 /status - List all torrents with their names, categories, and states
-/add <magnet_link> - Add a torrent using a magnet link
+/add \<magnet_link\> - Add a torrent using a magnet link
+
+You can also send magnet links directly without the /add command.
 
 Example:
-/add magnet:?xt=urn:btih:...`
+` + "`" + `magnet:?xt=urn:btih:...` + "`"
 
 	b.sendMessage(chatID, helpText)
 }
